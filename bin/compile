@@ -1,45 +1,66 @@
 #!/bin/bash
 BUILD_DIR=$1
+CACHE_DIR=$2
+
 TESSERACT_OCR_VERSION=3.02.02
 TESSERACT_OCR_DATA_VERSION=3.02
 
 TESSERACT_OCR_TGZ=tesseract-ocr-$TESSERACT_OCR_VERSION.tar.gz
 TESSERACT_OCR_REMOTE=http://jaist.dl.sourceforge.net/project/tesseract-ocr-alt/$TESSERACT_OCR_TGZ
-INSTALL_DIR=$BUILD_DIR/vendor/tesseract-ocr/
-INSTALL_DIR_TRAINING_DATA=$BUILD_DIR/vendor/
+VENDOR_DIR="$BUILD_DIR/vendor"
+mkdir -p $VENDOR_DIR
+
+INSTALL_DIR=$VENDOR_DIR/tesseract/
+INSTALL_DIR_TRAINING_DATA=$VENDOR_DIR/tesseract/training
+mkdir -p $INSTALL_DIR_TRAINING_DATA
+
 TESSERACT_OCR_DIR=${HOME}/vendor/tesseract-ocr
 ENVSCRIPT=$BUILD_DIR/.profile.d/tesseract-ocr.sh
 
 TESSERACT_OCR_LANGUAGES=fra,por
 
-echo "Getting Tesseract-ocr Binaries from $TESSERACT_OCR_REMOTE..."
-mkdir -p $INSTALL_DIR
-curl $TESSERACT_OCR_REMOTE -o - | tar -xz -C $INSTALL_DIR -f -
+CACHE_FILE="$CACHE_DIR/tesseract-$TESSERACT_OCR_VERSION.tar.gz"
 
-echo 'Getting tesseract-ocr training data'
-echo 'English training data'
-curl http://jaist.dl.sourceforge.net/project/tesseract-ocr-alt/tesseract-ocr-$TESSERACT_OCR_DATA_VERSION.eng.tar.gz \
-  -o - | tar -xz -C $INSTALL_DIR_TRAINING_DATA -f -
+if [ ! -f $CACHE_FILE ]; then
+  echo "Getting Tesseract-ocr Binaries from $TESSERACT_OCR_REMOTE..."
+  mkdir -p $INSTALL_DIR
+  curl $TESSERACT_OCR_REMOTE -o - | tar -xz -C $INSTALL_DIR -f -
 
-if [ $TESSERACT_OCR_LANGUAGES ]
-then
-   array=(${TESSERACT_OCR_LANGUAGES//,/ })
-   for i in "${!array[@]}"
-   do
-     lang="${array[i]}"
-     echo $lang 'training data'
-     curl http://jaist.dl.sourceforge.net/project/tesseract-ocr-alt/tesseract-ocr-$TESSERACT_OCR_DATA_VERSION.$lang.tar.gz \
-  -o - | tar -xz -C $INSTALL_DIR_TRAINING_DATA -f -
+  echo 'Getting tesseract-ocr training data'
+  echo 'English training data'
+  curl http://jaist.dl.sourceforge.net/project/tesseract-ocr-alt/tesseract-ocr-$TESSERACT_OCR_DATA_VERSION.eng.tar.gz \
+    -o - | tar -xz -C $INSTALL_DIR_TRAINING_DATA -f -
 
-   done
+  if [ $TESSERACT_OCR_LANGUAGES ]
+  then
+     array=(${TESSERACT_OCR_LANGUAGES//,/ })
+     for i in "${!array[@]}"
+     do
+       lang="${array[i]}"
+       echo $lang 'training data'
+       curl http://jaist.dl.sourceforge.net/project/tesseract-ocr-alt/tesseract-ocr-$TESSERACT_OCR_DATA_VERSION.$lang.tar.gz \
+    -o - | tar -xz -C $INSTALL_DIR_TRAINING_DATA -f -
+
+     done
+  fi
+  
+   # cache for future deploys
+  echo "-----> Caching Tesseract installation"
+  cd $VENDOR_DIR
+  REL_INSTALL_DIR="tesseract"
+  tar czf $REL_INSTALL_DIR.tar.gz $REL_INSTALL_DIR
+  mv $REL_INSTALL_DIR.tar.gz $CACHE_FILE
+
+else
+  # cache exists, extract it
+  echo "-----> Extracting Tesseract $CACHE_FILE => $VENDOR_DIR"
+  tar xzf $CACHE_FILE -C $VENDOR_DIR
 fi
 
-#echo 'Swedish training data'
-#curl https://tesseract-ocr.googlecode.com/files/tesseract-ocr-$TESSERACT_OCR_DATA_VERSION.swe.tar.gz \
-#  -o - | tar -xz -C $INSTALL_DIR_TRAINING_DATA -f -
-
 echo "Building runtime environment for tesseract-ocr"
-mkdir -p $BUILD_DIR/.profile.d
-echo "export PATH=\"$TESSERACT_OCR_DIR/bin:\$PATH\"" > $ENVSCRIPT
-echo "export LD_LIBRARY_PATH=\"$TESSERACT_OCR_DIR/lib:\$LD_LIBRARY_PATH\"" >> $ENVSCRIPT
-echo "export TESSDATA_PREFIX=\"$TESSERACT_OCR_DIR/\"" >> $ENVSCRIPT
+PROFILE_PATH="$BUILD_DIR/.profile.d/tesseract.sh"
+mkdir -p $(dirname $PROFILE_PATH)
+ACTUAL_INSTALL_PATH="$HOME/vendor/tesseract"
+echo "export PATH=$ACTUAL_INSTALL_PATH/bin:\$PATH" >> $PROFILE_PATH
+echo "export LD_LIBRARY_PATH=$ACTUAL_INSTALL_PATH/lib:\$LD_LIBRARY_PATH" >> $PROFILE_PATH
+echo "export TESSDATA_PREFIX=$ACTUAL_INSTALL_PATH" >> $PROFILE_PATH
